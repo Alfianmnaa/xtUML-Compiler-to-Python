@@ -1,0 +1,183 @@
+/* style.css */
+:root {
+  /* Default: Dark Theme (VS Code Style) */
+  --bg-app: #1e1e1e;
+  --bg-sidebar: #252526;
+  --bg-panel: #1e1e1e;
+  --border-color: #3e3e42;
+  --text-primary: #cccccc;
+  --text-secondary: #858585;
+  --accent-color: #007acc;
+  --accent-hover: #0062a3;
+  --button-text: #ffffff;
+  --scrollbar-bg: #1e1e1e;
+  --scrollbar-thumb: #424242;
+}
+
+[data-theme="light"] {
+  /* Light Theme */
+  --bg-app: #ffffff;
+  --bg-sidebar: #f3f3f3;
+  --bg-panel: #ffffff;
+  --border-color: #e4e4e4;
+  --text-primary: #333333;
+  --text-secondary: #666666;
+  --accent-color: #0078d4;
+  --accent-hover: #106ebe;
+  --button-text: #ffffff;
+  --scrollbar-bg: #f3f3f3;
+  --scrollbar-thumb: #c1c1c1;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  background-color: var(--bg-app);
+  color: var(--text-primary);
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* Header */
+header {
+  height: 50px;
+  background-color: var(--bg-sidebar);
+  border-bottom: 1px solid var(--border-color);
+  display: flex;
+  align-items: center;
+  justify_content: space-between;
+  padding: 0 1rem;
+}
+
+.brand {
+  font-weight: 600;
+  font-size: 1.1rem;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.brand i {
+  color: var(--accent-color);
+}
+
+.controls {
+  display: flex;
+  gap: 10px;
+}
+
+/* Main Layout */
+.main-container {
+  display: flex;
+  flex: 1;
+  height: calc(100vh - 50px);
+}
+
+/* Editor Panes */
+.editor-pane {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--border-color);
+  min-width: 0; /* Fix flex overflow */
+}
+
+.editor-pane:last-child {
+  border-right: none;
+}
+
+.pane-header {
+  height: 35px;
+  background-color: var(--bg-sidebar);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 1rem;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.pane-title {
+  text-transform: uppercase;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+}
+
+.pane-actions button {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 4px 8px;
+  font-size: 0.9rem;
+  transition: color 0.2s;
+}
+
+.pane-actions button:hover {
+  color: var(--text-primary);
+}
+
+/* Monaco Editor Container */
+.monaco-container {
+  flex: 1;
+  position: relative;
+  background-color: var(--bg-panel);
+}
+
+/* Buttons */
+.btn {
+  background-color: var(--bg-panel);
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
+  padding: 6px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.2s;
+}
+
+.btn:hover {
+  background-color: var(--border-color);
+}
+
+.btn-primary {
+  background-color: var(--accent-color);
+  color: var(--button-text);
+  border: none;
+}
+
+.btn-primary:hover {
+  background-color: var(--accent-hover);
+}
+
+/* File Input hidden styling */
+input[type="file"] {
+  display: none;
+}
+
+/* Scrollbars */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: var(--scrollbar-bg);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: 5px;
+}
+::-webkit-scrollbar-corner {
+  background: var(--bg-app);
+}

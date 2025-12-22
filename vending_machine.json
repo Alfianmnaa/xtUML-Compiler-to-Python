@@ -1,0 +1,245 @@
+{
+  "type": "subsystem",
+  "sub_id": "vm1",
+  "sub_name": "vending_machine_qris",
+  "model": [
+    {
+      "type": "class",
+      "class_id": "1",
+      "class_name": "Product",
+      "KL": "PRD",
+      "attributes": [
+        { "attribute_type": "naming_attribute", "attribute_name": "productCode", "data_type": "string" },
+        { "attribute_type": "descriptive_attribute", "attribute_name": "name", "data_type": "string" },
+        { "attribute_type": "descriptive_attribute", "attribute_name": "price", "data_type": "real" },
+        { "attribute_type": "descriptive_attribute", "attribute_name": "stock", "data_type": "integer" }
+      ],
+      "operations": ["checkStock()", "reduceStock()"],
+      "states": []
+    },
+    {
+      "type": "class",
+      "class_id": "2",
+      "class_name": "VendingMachine",
+      "KL": "VM",
+      "attributes": [
+        { "attribute_type": "descriptive_attribute", "attribute_name": "currentState", "data_type": "string", "default_value": "Idle" },
+        {
+          "attribute_type": "referential_attribute",
+          "attribute_name": "R1_selectedProduct",
+          "data_type": "inst_ref<Product>",
+          "related_class_id": "1",
+          "related_class_name": "Product",
+          "relationship_id": "R1"
+        },
+        {
+          "attribute_type": "referential_attribute",
+          "attribute_name": "R3_transaction",
+          "data_type": "inst_ref<Transaction>",
+          "related_class_id": "4",
+          "related_class_name": "Transaction",
+          "relationship_id": "R3"
+        }
+      ],
+      "operations": ["handleSelection(p_productCode: string)", "initiatePayment()", "verifyPayment()", "dispenseItem()", "cancelOrder()", "handleError()"],
+      "states": [
+        {
+          "state_id": "1",
+          "state_name": "Idle",
+          "state_event": ["ProductSelected"],
+          "next_state": "CheckStock",
+          "action": "select any p from instances of PRD where (selected.productCode == rcvd_evt.p_productCode);\nif (not_empty p)\n relate self to p across R1;\n if (p.stock > 0)\n  // Stock tersedia, lanjut ke inisiasi pembayaran\n  generate VM3:PaymentInitiated() to self;\n else\n  // Stock kosong, alihkan ke state CheckStock (next_state default)\n  generate VM2:StockEmpty() to self;\n end if;\nelse\n // Produk tidak ditemukan\n select one ui related by self->UI[R2];\n if (not_empty ui)\n  ui.showError(error_msg:\"Product not found\");\n end if;\n // Kembali ke Idle setelah error\n generate VM7:Reset() to self;\nend if;"
+        },
+        {
+          "state_id": "2",
+          "state_name": "CheckStock",
+          "state_event": ["StockEmpty"],
+          "next_state": "OutOfStock",
+          "action": "select one ui related by self->UI[R2];\nif (not_empty ui)\n ui.showMessage(message:\"Out of stock. Please select another item.\");\nend if;"
+        },
+        {
+          "state_id": "3",
+          "state_name": "PaymentInitiated",
+          "state_event": ["PaymentInitiated"],
+          "next_state": "WaitingPayment",
+          "action": "create object instance t of TXN;\nselect one p related by self->PRD[R1];\n// Pastikan produk dipilih\nif (not_empty p)\n  assign t.amount = p.price;\n  assign t.status = \"Pending\";\n  relate self to t across R3;\n\n  // Bridge Call: Initiate QR creation (PS is External Entity)\n  PS::createQR(t_instance:t);\n\n  // Optionally show QR on UI\n  select one ui related by self->UI[R2];\n  if (not_empty ui)\n   ui.showQR();\n  end if;\nelse\n  // Error: Product lost or unselected\n  generate VM7:Reset() to self;\nend if;"
+        },
+        {
+          "state_id": "4",
+          "state_name": "WaitingPayment",
+          "state_event": ["PaymentSuccess"],
+          "next_state": "Dispensing",
+          "action": "/* On successful payment, mark transaction, reduce stock, and dispense */\nselect one t related by self->TXN[R3];\nif (not_empty t)\n assign t.status = \"Completed\";\nend if;\n\n// Activate Dispenser (DSP is External Entity, langsung panggil bridge)\nDSP::activateMotor();\n\ngenerate VM6:ItemDispensed() to self;"
+        },
+        {
+          "state_id": "5",
+          "state_name": "WaitingPayment_Failed",
+          "state_event": ["PaymentFailed"],
+          "next_state": "Error",
+          "action": "select one ui related by self->UI[R2];\nif (not_empty ui)\n ui.showError(error_msg:\"Payment failed. Transaction canceled.\");\nend if;\n\nselect one t related by self->TXN[R3];\nif (not_empty t)\n unrelate self from t across R3;\n delete object instance t;\nend if;\n\n// Unrelate product selection (R1) as well\nunrelate self from self->PRD[R1] across R1;\ngenerate VM7:Reset() to self;"
+        },
+        {
+          "state_id": "6",
+          "state_name": "Dispensing",
+          "state_event": ["ItemDispensed"],
+          "next_state": "Idle",
+          "action": "// 1. Update stock (local attribute & external service)\nselect one p related by self->PRD[R1];\n\nif (not_empty p)\n // Hitung dan simpan nilai baru dalam variabel lokal (kepatuhan OAL)\n new_stock = p.stock - 1;\n product_code = p.productCode;\n\n // Update local stock\n assign p.stock = new_stock;\n\n // Update external inventory (IS is External Entity)\n IS::updateStock(productCode: product_code, newStock: new_stock);\n \n // Optionally notify UI\n select one ui related by self->UI[R2];\n if (not_empty ui)\n  ui.showMessage(message:\"Item dispensed. Thank you!\");\n end if;\nend if;\n\n// 2. Clean up transaction (Hapus TXN dan R3)\nselect one t related by self->TXN[R3];\nif (not_empty t)\n unrelate self from t across R3;\n delete object instance t;\nend if;\n\n// 3. Clean up product selection (Hapus R1)\nunrelate self from p across R1;"
+        },
+        {
+          "state_id": "7",
+          "state_name": "OutOfStock",
+          "state_event": ["Reset"],
+          "next_state": "Idle",
+          "action": "select one ui related by self->UI[R2];\nif (not_empty ui)\n ui.showMessage(message:\"System ready for next order.\");\nend if;\n\nunrelate self from self->PRD[R1] across R1; // Hapus referensi produk yang gagal"
+        },
+        {
+          "state_id": "8",
+          "state_name": "Error",
+          "state_event": ["Reset"],
+          "next_state": "Idle",
+          "action": "select one ui related by self->UI[R2];\nif (not_empty ui)\n ui.showMessage(message:\"Initializing system. Ready.\");\nend if;\n\n// Ensure all references are cleared (R1 and R3 if they exist)\nunrelate self from self->PRD[R1] across R1;\nunrelate self from self->TXN[R3] across R3;"
+        }
+      ]
+    },
+    {
+      "type": "class",
+      "class_id": "3",
+      "class_name": "UserInterface",
+      "KL": "UI",
+      "attributes": [{ "attribute_type": "descriptive_attribute", "attribute_name": "displayStatus", "data_type": "string" }],
+      "states": [],
+      "operations": ["displayScreen()", "receiveInput()", "showQR()", "showMessage(message: string)", "showError(error_msg: string)"]
+    },
+    {
+      "type": "class",
+      "class_id": "4",
+      "class_name": "Transaction",
+      "KL": "TXN",
+      "attributes": [
+        { "attribute_type": "naming_attribute", "attribute_name": "transactionId", "data_type": "string" },
+        { "attribute_type": "descriptive_attribute", "attribute_name": "amount", "data_type": "real" },
+        { "attribute_type": "descriptive_attribute", "attribute_name": "status", "data_type": "string", "default_value": "Pending" },
+        { "attribute_type": "descriptive_attribute", "attribute_name": "timestamp", "data_type": "datetime" }
+      ],
+      "operations": ["logTransaction()"],
+      "states": []
+    },
+    {
+      "type": "class",
+      "class_id": "5",
+      "class_name": "Payment",
+      "KL": "PAY",
+      "attributes": [
+        { "attribute_type": "naming_attribute", "attribute_name": "paymentId", "data_type": "string" },
+        { "attribute_type": "descriptive_attribute", "attribute_name": "qrisCode", "data_type": "string" },
+        { "attribute_type": "descriptive_attribute", "attribute_name": "amount", "data_type": "real" },
+        { "attribute_type": "descriptive_attribute", "attribute_name": "status", "data_type": "string", "default_value": "Waiting" }
+      ],
+      "operations": ["generateQRIS()", "verifyQRIS()"],
+      "states": []
+    },
+    {
+      "type": "class",
+      "class_id": "6",
+      "class_name": "PaymentService",
+      "KL": "PS",
+      "is_external": true,
+      "attributes": [],
+      "states": [],
+      "operations": ["createQR(t_instance: inst_ref<Transaction>)", "validatePayment()"]
+    },
+    {
+      "type": "class",
+      "class_id": "7",
+      "class_name": "InventoryService",
+      "KL": "IS",
+      "is_external": true,
+      "attributes": [],
+      "states": [],
+      "operations": ["getStockStatus()", "updateStock(productCode: string, newStock: integer)"]
+    },
+    {
+      "type": "class",
+      "class_id": "8",
+      "class_name": "Dispenser",
+      "KL": "DSP",
+      "is_external": true,
+      "attributes": [],
+      "states": [],
+      "operations": ["activateMotor()"]
+    }
+  ],
+  "relationships": [
+    {
+      "rel_id": "R1",
+      "type": "binary",
+      "from_class": "1",
+      "from_class_role": "is_selected_by",
+      "from_class_multiplicity": "0_star",
+      "to_class": "2",
+      "to_class_role": "selects",
+      "to_class_multiplicity": "1",
+      "is_referential": true
+    },
+    {
+      "rel_id": "R2",
+      "type": "binary",
+      "from_class": "2",
+      "from_class_role": "interactsThrough",
+      "from_class_multiplicity": "1",
+      "to_class": "3",
+      "to_class_role": "uses",
+      "to_class_multiplicity": "1"
+    },
+    {
+      "rel_id": "R3",
+      "type": "binary",
+      "from_class": "2",
+      "from_class_role": "records",
+      "from_class_multiplicity": "1",
+      "to_class": "4",
+      "to_class_role": "is_recorded_by",
+      "to_class_multiplicity": "0_star",
+      "is_referential": true
+    },
+    {
+      "rel_id": "R4",
+      "type": "binary",
+      "from_class": "4",
+      "from_class_role": "hasPayment",
+      "from_class_multiplicity": "1",
+      "to_class": "5",
+      "to_class_role": "is_recorded_in",
+      "to_class_multiplicity": "0_star"
+    },
+    {
+      "rel_id": "R5",
+      "type": "binary",
+      "from_class": "5",
+      "from_class_role": "processedBy",
+      "from_class_multiplicity": "1",
+      "to_class": "6",
+      "to_class_role": "processes",
+      "to_class_multiplicity": "1"
+    },
+    {
+      "rel_id": "R6",
+      "type": "binary",
+      "from_class": "1",
+      "from_class_role": "managedBy",
+      "from_class_multiplicity": "0_star",
+      "to_class": "7",
+      "to_class_role": "uses",
+      "to_class_multiplicity": "1"
+    }
+  ],
+  "events": [
+    { "event_id": "VM1", "class_id": "2", "event_name": "ProductSelected", "parameters": ["p_productCode: string"] },
+    { "event_id": "VM2", "class_id": "2", "event_name": "StockEmpty", "parameters": [] },
+    { "event_id": "VM3", "class_id": "2", "event_name": "PaymentInitiated", "parameters": [] },
+    { "event_id": "VM4", "class_id": "2", "event_name": "PaymentSuccess", "parameters": [] },
+    { "event_id": "VM5", "class_id": "2", "event_name": "PaymentFailed", "parameters": [] },
+    { "event_id": "VM6", "class_id": "2", "event_name": "ItemDispensed", "parameters": [] },
+    { "event_id": "VM7", "class_id": "2", "event_name": "Reset", "parameters": [] }
+  ]
+}

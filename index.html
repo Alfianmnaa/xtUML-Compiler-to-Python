@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>xtUML to Python Compiler</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" />
+    <link rel="stylesheet" href="style.css" />
+
+    <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+  </head>
+  <body>
+    <header>
+      <div class="brand">
+        <i class="fas fa-code-branch"></i>
+        xtUML Compiler
+      </div>
+      <div class="controls">
+        <input type="file" id="fileInput" accept=".json" />
+        <button class="btn" onclick="document.getElementById('fileInput').click()"><i class="fas fa-folder-open"></i> Open JSON</button>
+        <button class="btn btn-primary" id="translateButton"><i class="fas fa-play"></i> Compile / Translate</button>
+        <button class="btn" id="themeToggle">
+          <i class="fas fa-sun"></i>
+        </button>
+      </div>
+    </header>
+
+    <div class="main-container">
+      <div class="editor-pane">
+        <div class="pane-header">
+          <span class="pane-title">Model Input (JSON)</span>
+          <div class="pane-actions">
+            <button id="jsonZoomIn" title="Zoom In"><i class="fas fa-search-plus"></i></button>
+            <button id="jsonZoomOut" title="Zoom Out"><i class="fas fa-search-minus"></i></button>
+            <div style="width: 1px; height: 16px; background: var(--border-color); margin: 0 5px; display: inline-block; vertical-align: middle"></div>
+            <button id="formatJsonBtn" title="Format JSON"><i class="fas fa-align-left"></i></button>
+          </div>
+        </div>
+        <div id="jsonEditor" class="monaco-container"></div>
+      </div>
+
+      <div class="editor-pane">
+        <div class="pane-header">
+          <span class="pane-title">Python Output</span>
+          <div class="pane-actions">
+            <button id="pyZoomIn" title="Zoom In"><i class="fas fa-search-plus"></i></button>
+            <button id="pyZoomOut" title="Zoom Out"><i class="fas fa-search-minus"></i></button>
+
+            <div style="width: 1px; height: 16px; background: var(--border-color); margin: 0 5px; display: inline-block; vertical-align: middle"></div>
+
+            <button id="copyButton" title="Copy Code"><i class="fas fa-copy"></i></button>
+            <button id="downloadButton" title="Download ZIP"><i class="fas fa-download"></i></button>
+          </div>
+        </div>
+        <div id="pythonEditor" class="monaco-container"></div>
+      </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs/loader.min.js"></script>
+    <script>
+      require.config({ paths: { vs: "https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs" } });
+
+      let jsonEditorInstance, pythonEditorInstance;
+
+      require(["vs/editor/editor.main"], function () {
+        // Init JSON Editor
+        jsonEditorInstance = monaco.editor.create(document.getElementById("jsonEditor"), {
+          value: '{\n  "type": "subsystem",\n  "model": []\n}',
+          language: "json",
+          theme: "vs-dark",
+          automaticLayout: true,
+          minimap: { enabled: false },
+          scrollBeyondLastLine: false,
+          fontSize: 14,
+          mouseWheelZoom: true, // Aktifkan Zoom dengan Ctrl+Scroll
+        });
+
+        // Init Python Editor
+        pythonEditorInstance = monaco.editor.create(document.getElementById("pythonEditor"), {
+          value: "# Generated Python code will appear here...",
+          language: "python",
+          theme: "vs-dark",
+          automaticLayout: true,
+          minimap: { enabled: true },
+          readOnly: true,
+          scrollBeyondLastLine: false,
+          fontSize: 14,
+          mouseWheelZoom: true, // Aktifkan Zoom dengan Ctrl+Scroll
+        });
+
+        window.jsonEditor = jsonEditorInstance;
+        window.pythonEditor = pythonEditorInstance;
+        window.monaco = monaco;
+      });
+    </script>
+
+    <script type="module" src="index.js"></script>
+  </body>
+</html>

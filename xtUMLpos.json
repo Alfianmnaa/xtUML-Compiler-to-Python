@@ -1,0 +1,419 @@
+{
+  "type": "subsystem",
+  "sub_id": "pos1",
+  "sub_name": "point_of_sale_system",
+  "model": [
+    {
+      "type": "class",
+      "class_id": "C1",
+      "class_name": "Cashier",
+      "KL": "csh",
+      "attributes": [
+        { "attribute_type": "naming_attribute", "attribute_name": "id", "data_type": "id" },
+        {
+          "attribute_type": "referential_attribute",
+          "attribute_name": "userId",
+          "data_type": "inst_ref<User>",
+          "related_class_id": "U1",
+          "related_class_name": "User",
+          "relationship_id": "R7"
+        },
+        { "attribute_type": "descriptive_attribute", "attribute_name": "cashierName", "data_type": "string" }
+      ],
+      "operations": ["createTransaction()"],
+      "states": [
+        {
+          "state_id": "1",
+          "state_name": "Idle",
+          "state_event": ["startShift"],
+          "action": "// Cashier is waiting for shift to start"
+        },
+        {
+          "state_id": "2",
+          "state_name": "OnDuty",
+          "state_event": ["createTransaction", "endShift"],
+          "action": "// Cashier is on duty and ready to serve customers"
+        }
+      ]
+    },
+    {
+      "type": "class",
+      "class_id": "T1",
+      "class_name": "Transaction",
+      "KL": "txn",
+      "attributes": [
+        { "attribute_type": "naming_attribute", "attribute_name": "id", "data_type": "id" },
+        {
+          "attribute_type": "referential_attribute",
+          "attribute_name": "cashierId",
+          "data_type": "inst_ref<Cashier>",
+          "related_class_id": "C1",
+          "related_class_name": "Cashier",
+          "relationship_id": "R1"
+        },
+        { "attribute_type": "descriptive_attribute", "attribute_name": "receiptNumber", "data_type": "string" },
+        { "attribute_type": "descriptive_attribute", "attribute_name": "amountPaid", "data_type": "integer", "default_value": 0 },
+        { "attribute_type": "descriptive_attribute", "attribute_name": "change", "data_type": "integer", "default_value": 0 },
+        { "attribute_type": "descriptive_attribute", "attribute_name": "status", "data_type": "string", "default_value": "Open" },
+        { "attribute_type": "descriptive_attribute", "attribute_name": "createdAt", "data_type": "datetime" }
+      ],
+      "operations": [
+        "addItem(productId: id, quantity: integer)",
+        "removeItem(itemId: id)",
+        "calculateTotal(): integer",
+        "finalize(payment: integer)",
+        "cancel()"
+      ],
+      "states": [
+        {
+          "state_id": "1",
+          "state_name": "Open",
+          "state_event": ["addItem", "removeItem", "finalize", "cancel"],
+          "action": "assign self.status = \"Open\";\nassign self.createdAt = CurrentTime;\nLOG::log_info(\"Transaction created: \" + self.receiptNumber);"
+        },
+        {
+          "state_id": "2",
+          "state_name": "InProgress",
+          "state_event": ["addItem", "removeItem", "finalize", "cancel"],
+          "action": "assign self.status = \"InProgress\";\n// Transaction has items and is being processed"
+        },
+        {
+          "state_id": "3",
+          "state_name": "AwaitingPayment",
+          "state_event": ["paymentReceived", "cancel"],
+          "action": "assign self.status = \"AwaitingPayment\";\nassign total = self.calculateTotal();\nDisplay::showTotal(total);"
+        },
+        {
+          "state_id": "4",
+          "state_name": "Completed",
+          "state_event": [],
+          "action": "assign self.status = \"Completed\";\nassign self.change = self.amountPaid - self.calculateTotal();\nReceipt::print(self.receiptNumber);\nLOG::log_info(\"Transaction completed: \" + self.receiptNumber);"
+        },
+        {
+          "state_id": "5",
+          "state_name": "Cancelled",
+          "state_event": [],
+          "action": "assign self.status = \"Cancelled\";\nselect many items from instances of TransactionItem where (item.transactionId == self.id);\nfor each item in items\n    select one product related by item->R3[Product];\n    assign product.stock = product.stock + item.amount;\n    delete object instance item;\nend for;\nLOG::log_info(\"Transaction cancelled: \" + self.receiptNumber);"
+        }
+      ]
+    },
+    {
+      "type": "class",
+      "class_id": "TI1",
+      "class_name": "TransactionItem",
+      "KL": "ti",
+      "attributes": [
+        { "attribute_type": "naming_attribute", "attribute_name": "id", "data_type": "id" },
+        {
+          "attribute_type": "referential_attribute",
+          "attribute_name": "transactionId",
+          "data_type": "inst_ref<Transaction>",
+          "related_class_id": "T1",
+          "related_class_name": "Transaction",
+          "relationship_id": "R2"
+        },
+        {
+          "attribute_type": "referential_attribute",
+          "attribute_name": "productId",
+          "data_type": "inst_ref<Product>",
+          "related_class_id": "P1",
+          "related_class_name": "Product",
+          "relationship_id": "R3"
+        },
+        { "attribute_type": "descriptive_attribute", "attribute_name": "priceAtSale", "data_type": "integer" },
+        { "attribute_type": "descriptive_attribute", "attribute_name": "amount", "data_type": "integer" }
+      ],
+      "operations": ["getSubtotal(): integer"],
+      "states": []
+    },
+    {
+      "type": "class",
+      "class_id": "P1",
+      "class_name": "Product",
+      "KL": "prd",
+      "attributes": [
+        { "attribute_type": "naming_attribute", "attribute_name": "id", "data_type": "id" },
+        { "attribute_type": "descriptive_attribute", "attribute_name": "productName", "data_type": "string" },
+        { "attribute_type": "descriptive_attribute", "attribute_name": "price", "data_type": "integer" },
+        { "attribute_type": "descriptive_attribute", "attribute_name": "stock", "data_type": "integer", "default_value": 0 }
+      ],
+      "operations": ["updateStock(quantity: integer)", "getStock(): integer"],
+      "states": [
+        {
+          "state_id": "1",
+          "state_name": "Available",
+          "state_event": ["stockDepleted"],
+          "action": "// Product is available for sale"
+        },
+        {
+          "state_id": "2",
+          "state_name": "OutOfStock",
+          "state_event": ["stockReplenished"],
+          "action": "// Product is out of stock\nLOG::log_info(\"Product out of stock: \" + self.productName);"
+        }
+      ]
+    },
+    {
+      "type": "class",
+      "class_id": "U1",
+      "class_name": "User",
+      "KL": "usr",
+      "attributes": [
+        { "attribute_type": "naming_attribute", "attribute_name": "userId", "data_type": "id" },
+        { "attribute_type": "descriptive_attribute", "attribute_name": "username", "data_type": "string" },
+        { "attribute_type": "descriptive_attribute", "attribute_name": "passwordHash", "data_type": "string" },
+        {
+          "attribute_type": "referential_attribute",
+          "attribute_name": "roleId",
+          "data_type": "inst_ref<Role>",
+          "related_class_id": "RL1",
+          "related_class_name": "Role",
+          "relationship_id": "R4"
+        }
+      ],
+      "operations": [
+        "changePassword(oldPassword: string, newPassword: string)",
+        "hasPermission(permissionName: string): boolean"
+      ],
+      "states": [
+        {
+          "state_id": "1",
+          "state_name": "Active",
+          "state_event": ["deactivate"],
+          "action": "// User is active and can login"
+        },
+        {
+          "state_id": "2",
+          "state_name": "Inactive",
+          "state_event": ["activate"],
+          "action": "// User is inactive"
+        }
+      ]
+    },
+    {
+      "type": "class",
+      "class_id": "RL1",
+      "class_name": "Role",
+      "KL": "role",
+      "attributes": [
+        { "attribute_type": "naming_attribute", "attribute_name": "id", "data_type": "id" },
+        { "attribute_type": "descriptive_attribute", "attribute_name": "rolename", "data_type": "string" },
+        { "attribute_type": "descriptive_attribute", "attribute_name": "permission", "data_type": "string[]" }
+      ],
+      "operations": ["addPermission(permissionName: string)", "removePermission(permissionName: string)"],
+      "states": []
+    },
+    {
+      "type": "class",
+      "class_id": "S1",
+      "class_name": "Session",
+      "KL": "sess",
+      "attributes": [
+        { "attribute_type": "naming_attribute", "attribute_name": "id", "data_type": "id" },
+        {
+          "attribute_type": "referential_attribute",
+          "attribute_name": "userId",
+          "data_type": "inst_ref<User>",
+          "related_class_id": "U1",
+          "related_class_name": "User",
+          "relationship_id": "R6"
+        },
+        { "attribute_type": "descriptive_attribute", "attribute_name": "expireDate", "data_type": "datetime" }
+      ],
+      "operations": ["isValid(): boolean", "logout()"],
+      "states": [
+        {
+          "state_id": "1",
+          "state_name": "Active",
+          "state_event": ["expire", "logout"],
+          "action": "assign self.expireDate = CurrentTime + 8 hours;\nLOG::log_info(\"Session created for user: \" + self.userId);"
+        },
+        {
+          "state_id": "2",
+          "state_name": "Expired",
+          "state_event": [],
+          "action": "LOG::log_info(\"Session expired: \" + self.id);"
+        }
+      ]
+    },
+    {
+      "type": "class",
+      "class_id": "PO1",
+      "class_name": "PurchaseOrder",
+      "KL": "po",
+      "attributes": [
+        { "attribute_type": "naming_attribute", "attribute_name": "id", "data_type": "id" },
+        {
+          "attribute_type": "referential_attribute",
+          "attribute_name": "supplierId",
+          "data_type": "inst_ref<Supplier>",
+          "related_class_id": "SUP1",
+          "related_class_name": "Supplier",
+          "relationship_id": "R5"
+        },
+        { "attribute_type": "descriptive_attribute", "attribute_name": "orderDate", "data_type": "datetime" },
+        { "attribute_type": "descriptive_attribute", "attribute_name": "status", "data_type": "string", "default_value": "Pending" },
+        { "attribute_type": "descriptive_attribute", "attribute_name": "total", "data_type": "integer", "default_value": 0 }
+      ],
+      "operations": ["createOrder(supplierId: id)", "cancelOrder()", "receiveOrder()"],
+      "states": [
+        {
+          "state_id": "1",
+          "state_name": "Pending",
+          "state_event": ["approve", "cancel"],
+          "action": "assign self.status = \"Pending\";\nassign self.orderDate = CurrentTime;\nLOG::log_info(\"Purchase order created: \" + self.id);"
+        },
+        {
+          "state_id": "2",
+          "state_name": "Approved",
+          "state_event": ["receive", "cancel"],
+          "action": "assign self.status = \"Approved\";\nselect one supplier related by self->R5[Supplier];\nNotification::sendToSupplier(supplier.contact, \"Order approved: \" + self.id);"
+        },
+        {
+          "state_id": "3",
+          "state_name": "Received",
+          "state_event": [],
+          "action": "assign self.status = \"Received\";\n// Update product stock from order items\nLOG::log_info(\"Purchase order received: \" + self.id);"
+        },
+        {
+          "state_id": "4",
+          "state_name": "Cancelled",
+          "state_event": [],
+          "action": "assign self.status = \"Cancelled\";\nLOG::log_info(\"Purchase order cancelled: \" + self.id);"
+        }
+      ]
+    },
+    {
+      "type": "class",
+      "class_id": "SUP1",
+      "class_name": "Supplier",
+      "KL": "sup",
+      "attributes": [
+        { "attribute_type": "naming_attribute", "attribute_name": "id", "data_type": "id" },
+        { "attribute_type": "descriptive_attribute", "attribute_name": "supplierName", "data_type": "string" },
+        { "attribute_type": "descriptive_attribute", "attribute_name": "contact", "data_type": "string" }
+      ],
+      "operations": ["supplyProduct(productId: id, quantity: integer)"],
+      "states": [
+        {
+          "state_id": "1",
+          "state_name": "Active",
+          "state_event": ["deactivate"],
+          "action": "// Supplier is active and can receive orders"
+        },
+        {
+          "state_id": "2",
+          "state_name": "Inactive",
+          "state_event": ["activate"],
+          "action": "// Supplier is inactive"
+        }
+      ]
+    }
+  ],
+  "relationships": [
+    {
+      "rel_id": "R1",
+      "type": "binary",
+      "from_class": "C1",
+      "from_class_role": "creates",
+      "from_class_multiplicity": "1",
+      "to_class": "T1",
+      "to_class_role": "is_created_by",
+      "to_class_multiplicity": "0_star",
+      "is_referential": true
+    },
+    {
+      "rel_id": "R2",
+      "type": "binary",
+      "from_class": "T1",
+      "from_class_role": "contains",
+      "from_class_multiplicity": "1",
+      "to_class": "TI1",
+      "to_class_role": "is_contained_in",
+      "to_class_multiplicity": "1_star",
+      "is_referential": true
+    },
+    {
+      "rel_id": "R3",
+      "type": "binary",
+      "from_class": "TI1",
+      "from_class_role": "refers_to",
+      "from_class_multiplicity": "0_star",
+      "to_class": "P1",
+      "to_class_role": "referenced_by",
+      "to_class_multiplicity": "1",
+      "is_referential": true
+    },
+    {
+      "rel_id": "R4",
+      "type": "binary",
+      "from_class": "U1",
+      "from_class_role": "has",
+      "from_class_multiplicity": "0_star",
+      "to_class": "RL1",
+      "to_class_role": "belongs_to",
+      "to_class_multiplicity": "1",
+      "is_referential": true
+    },
+    {
+      "rel_id": "R5",
+      "type": "binary",
+      "from_class": "PO1",
+      "from_class_role": "from",
+      "from_class_multiplicity": "0_star",
+      "to_class": "SUP1",
+      "to_class_role": "supplies",
+      "to_class_multiplicity": "1",
+      "is_referential": true
+    },
+    {
+      "rel_id": "R6",
+      "type": "binary",
+      "from_class": "U1",
+      "from_class_role": "owns_session",
+      "from_class_multiplicity": "1",
+      "to_class": "S1",
+      "to_class_role": "belongs_to_user",
+      "to_class_multiplicity": "0_star",
+      "is_referential": true
+    },
+    {
+      "rel_id": "R7",
+      "type": "binary",
+      "from_class": "C1",
+      "from_class_role": "is_user",
+      "from_class_multiplicity": "1",
+      "to_class": "U1",
+      "to_class_role": "as_cashier",
+      "to_class_multiplicity": "1",
+      "is_referential": true
+    }
+  ],
+  "events": [
+    { "event_id": "CSH1", "class_id": "C1", "event_name": "startShift", "parameters": [] },
+    { "event_id": "CSH2", "class_id": "C1", "event_name": "createTransaction", "parameters": [] },
+    { "event_id": "CSH3", "class_id": "C1", "event_name": "endShift", "parameters": [] },
+    { "event_id": "TXN1", "class_id": "T1", "event_name": "addItem", "parameters": ["productId: id", "quantity: integer"] },
+    { "event_id": "TXN2", "class_id": "T1", "event_name": "removeItem", "parameters": ["itemId: id"] },
+    { "event_id": "TXN3", "class_id": "T1", "event_name": "finalize", "parameters": ["payment: integer"] },
+    { "event_id": "TXN4", "class_id": "T1", "event_name": "cancel", "parameters": [] },
+    { "event_id": "TXN5", "class_id": "T1", "event_name": "paymentReceived", "parameters": [] },
+    { "event_id": "TXN6", "class_id": "T1", "event_name": "TransactionCreated", "parameters": [] },
+    { "event_id": "TXN7", "class_id": "T1", "event_name": "ItemAdded", "parameters": [] },
+    { "event_id": "TXN8", "class_id": "T1", "event_name": "ItemRemoved", "parameters": [] },
+    { "event_id": "TXN9", "class_id": "T1", "event_name": "TransactionCompleted", "parameters": [] },
+    { "event_id": "TXN10", "class_id": "T1", "event_name": "TransactionCancelled", "parameters": [] },
+    { "event_id": "PRD1", "class_id": "P1", "event_name": "stockDepleted", "parameters": [] },
+    { "event_id": "PRD2", "class_id": "P1", "event_name": "stockReplenished", "parameters": [] },
+    { "event_id": "USR1", "class_id": "U1", "event_name": "deactivate", "parameters": [] },
+    { "event_id": "USR2", "class_id": "U1", "event_name": "activate", "parameters": [] },
+    { "event_id": "SES1", "class_id": "S1", "event_name": "expire", "parameters": [] },
+    { "event_id": "SES2", "class_id": "S1", "event_name": "logout", "parameters": [] },
+    { "event_id": "PO1", "class_id": "PO1", "event_name": "approve", "parameters": [] },
+    { "event_id": "PO2", "class_id": "PO1", "event_name": "cancel", "parameters": [] },
+    { "event_id": "PO3", "class_id": "PO1", "event_name": "receive", "parameters": [] },
+    { "event_id": "PO4", "class_id": "PO1", "event_name": "OrderCreated", "parameters": [] },
+    { "event_id": "SUP1", "class_id": "SUP1", "event_name": "deactivate", "parameters": [] },
+    { "event_id": "SUP2", "class_id": "SUP1", "event_name": "activate", "parameters": [] }
+  ]
+}
