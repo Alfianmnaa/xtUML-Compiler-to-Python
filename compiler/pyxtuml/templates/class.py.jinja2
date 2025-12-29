@@ -1,0 +1,17 @@
+from transitions import Machine
+
+class {{ name }}:
+    instances = []
+{%- if states_content %}
+{{ states_content }}
+{%- endif %}
+
+    def __init__(self):
+{%- for attribute in attributes %}
+        self.{{ attribute.Name }} = None
+{%- endfor %}
+        {{ name }}.instances.append(self)
+{%- if sm_content %}
+{{ sm_content }}
+{%- endif %}
+{{ operations_content }}
