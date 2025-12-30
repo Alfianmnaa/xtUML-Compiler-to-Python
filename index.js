@@ -109,7 +109,12 @@ translateButton.addEventListener("click", () => {
     const combinedPreview = combineFilesOrdered(files);
     setPythonContent(combinedPreview);
   } catch (err) {
-    const errorMsg = `# ERROR DURING COMPILATION:\n# ${err.message}\n\n# Check your JSON input structure.`;
+    let errorMsg = "# ERROR DURING COMPILATION:\n";
+    if (err.errors && Array.isArray(err.errors)) {
+      errorMsg += err.errors.map((e, idx) => `${idx + 1}. [${e.path}] ${e.message}${e.hint ? ` (hint: ${e.hint})` : ""}`).join("\n");
+    } else {
+      errorMsg += `# ${err.message}\n\n# Check your JSON input structure.`;
+    }
     setPythonContent(errorMsg);
     alert("Compilation Failed: " + err.message);
     console.error(err);

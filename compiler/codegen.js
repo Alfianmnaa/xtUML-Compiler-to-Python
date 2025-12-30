@@ -8,18 +8,25 @@ function translateExpression(expr, contextType) {
   let pyExpr = expr;
 
   // [KOMPONEN: Date/Time Constants]
-  pyExpr = pyExpr.replace(/\bCurrentTimeStamp\b/gi, "RuntimeServices.current_timestamp()")
-                 .replace(/\bCurrentTimestamp\b/gi, "RuntimeServices.current_timestamp()")
-                 .replace(/\bCurrentTime\b/gi, "RuntimeServices.current_timestamp()")
-                 .replace(/\bCurrentDate\b/gi, "RuntimeServices.current_date()");
+  pyExpr = pyExpr
+    .replace(/\bCurrentTimeStamp\b/gi, "RuntimeServices.current_timestamp()")
+    .replace(/\bCurrentTimestamp\b/gi, "RuntimeServices.current_timestamp()")
+    .replace(/\bCurrentTime\b/gi, "RuntimeServices.current_timestamp()")
+    .replace(/\bCurrentDate\b/gi, "RuntimeServices.current_date()");
 
   // [KOMPONEN: Duration Literals] e.g., "8 hours" -> 8 * 3600 seconds
   pyExpr = pyExpr.replace(/(\d+(?:\.\d+)?)\s*(hours?|hour|minutes?|minute|secs?|sec|seconds?|days?|day)/gi, (m, val, unit) => {
     const mul = {
-      hour: 3600, hours: 3600,
-      minute: 60, minutes: 60,
-      sec: 1, secs: 1, second: 1, seconds: 1,
-      day: 86400, days: 86400,
+      hour: 3600,
+      hours: 3600,
+      minute: 60,
+      minutes: 60,
+      sec: 1,
+      secs: 1,
+      second: 1,
+      seconds: 1,
+      day: 86400,
+      days: 86400,
     }[unit.toLowerCase()];
     if (!mul) return m;
     return `(${val} * ${mul})`;
@@ -707,8 +714,14 @@ def clear_relationships(rel_id: Optional[str] = None):
 
 // --- CLASS FILE GENERATION ---
 
-function genClassFile(cls, allClasses, model) {
+function genClassFile(cls, model) {
   const className = cls.name.replace(/\W/g, "");
+  const allClasses = model.classes || [];
+  const associationClasses = model.associationClasses || [];
+  const generalizations = model.generalizations || [];
+  const sanitizeName = (name) => (name || "").replace(/\W/g, "");
+  const parentGen = generalizations.find((g) => g.subClass === cls.name || g.subClassId === cls.id || g.subClassKL === cls.kl);
+  const baseClassName = parentGen ? sanitizeName(parentGen.superClass) : "InstanceBase";
   const lines = [];
   lines.push(`# models/${className}.py`);
   lines.push("from __future__ import annotations");
@@ -718,10 +731,10 @@ function genClassFile(cls, allClasses, model) {
   lines.push("from runtime.state_machine import StateMachine");
   lines.push("from runtime.storage import ObjectStore");
   lines.push("from runtime.relationship import relate, unrelate, select_related, select_one_related");
+  if (baseClassName !== "InstanceBase") {
+    lines.push(`from models.${baseClassName} import ${baseClassName}`);
+  }
   lines.push("");
-
-  // Use TYPE_CHECKING to avoid circular imports
-  const otherClasses = allClasses.filter((c) => c.name !== cls.name);
 
   // Lazy imports inside functions to avoid circular dependency
   lines.push("# Lazy import helper to avoid circular dependencies");
@@ -735,10 +748,14 @@ function genClassFile(cls, allClasses, model) {
   // Create KeyLetter mapping
   lines.push("# KeyLetter to ClassName mapping");
   lines.push("_KL_MAP = {");
-  for (const otherCls of allClasses) {
-    const otherClsName = otherCls.name.replace(/\W/g, "");
-    if (otherCls.kl) {
-      lines.push(`    '${otherCls.kl}': '${otherClsName}',`);
+  const klEntries = [...allClasses, ...associationClasses];
+  const seenKLs = new Set();
+  for (const otherCls of klEntries) {
+    const otherClsName = sanitizeName(otherCls.name || otherCls.class_name);
+    const kl = otherCls.kl || otherCls.KL || otherCls.keyLetters || otherCls.name;
+    if (kl && otherClsName && !seenKLs.has(kl)) {
+      lines.push(`    '${kl}': '${otherClsName}',`);
+      seenKLs.add(kl);
     }
   }
   lines.push("}");
@@ -758,7 +775,7 @@ function genClassFile(cls, allClasses, model) {
   });
 
   // Class definition
-  lines.push(`class ${className}(InstanceBase):`);
+  lines.push(`class ${className}(${baseClassName}):`);
   lines.push(`    """xtUML Class: ${cls.name} (${cls.kl})"""`);
   lines.push(`    kl = "${cls.kl}"`);
   lines.push("");
@@ -767,7 +784,12 @@ function genClassFile(cls, allClasses, model) {
   lines.push("    def __init__(self, id: Optional[str] = None):");
   lines.push("        if id is None:");
   lines.push("            id = str(uuid.uuid4())");
-  lines.push(`        super().__init__(id, "${cls.kl}")`);
+  if (baseClassName === "InstanceBase") {
+    lines.push(`        super().__init__(id, "${cls.kl}")`);
+  } else {
+    lines.push("        super().__init__(id)");
+    lines.push(`        self.kl = "${cls.kl}"`);
+  }
 
   // Initialize attributes with proper default values based on OAL types
   for (const a of cls.attributes || []) {
@@ -928,7 +950,7 @@ export function generateModelFiles(model) {
   // Generate model classes
   for (const c of model.classes || []) {
     const fname = `models/${(c.name || "Class").replace(/\W/g, "")}.py`;
-    files[fname] = genClassFile(c, model.classes, model);
+    files[fname] = genClassFile(c, model);
   }
 
   // Generate association classes for many-to-many relationships

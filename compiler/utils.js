@@ -29,6 +29,18 @@ export const OAL_TYPE_MAP = {
 };
 
 /**
+ * Detect whether an OAL data type string is recognized.
+ */
+export function isKnownOalType(oalType) {
+  if (oalType === undefined || oalType === null) return true;
+  const lower = String(oalType).trim().toLowerCase();
+  if (!lower) return false;
+
+  if (lower.startsWith("inst_ref<") || lower.startsWith("inst_ref_set<")) return true;
+  return Boolean(OAL_TYPE_MAP[lower]);
+}
+
+/**
  * Get Python type and default value for OAL data type
  */
 export function mapOalTypeToPython(oalType) {
